@@ -9,6 +9,8 @@ def find_prefix(l, p):
     return -1
 
 def process_method(m):
+    orig_method = m
+
     m = m.strip()
     if m.find('//') != -1:
         m = m[:m.find('//')]
@@ -23,18 +25,45 @@ def process_method(m):
         q = '+'
     m = m.strip()
 
-    if m.find('(') == 0:
-        m = m[m.find(')') + 1:]
-    m = m.strip()
+    paren_count = 0
+    paren_start = -1
+    ranges_to_delete = []
+    for i, c in enumerate(m):
+        if c == '(':
+            if paren_count == 0: paren_start = i
+            paren_count += 1
+        elif c == ')': 
+            paren_count -= 1
+            if paren_count < 0:
+                print "Malforrmed method:", orig_method
+                start = i - 5 if i >= 5 else i
+                end = i + 5 if len(m) < i + 5 else len(m) - i - 1
+                print "Mismatched parentheses at index", i, "...{0}...".format(m[start : end])
+                return ''
+            elif paren_count == 0:
+                is_retval = (paren_start == 0)
+                n = 1 if i + 1 < len(m) and m[i + 1] == ' ' else 0
+                arg_start = (i + n + 1)
+                m_remainder = m[arg_start:]
 
-    while m.find('(') != -1:
-        o = m.find('(')
-        c = m.find(')')
-        n = 1 if m[c + 1] == ' ' else 0
-        n += m[c + 1 + n:].find(' ') if ' ' in m[c + 1 + n:] else len(m[c + 1 + n:])
-        m = m[:o] + m[c + 1 + n:]
+                if is_retval:
+                     arg_len = 0
+                else: 
+                    arg_len = m_remainder.find(' ') if ' ' in m_remainder else len(m_remainder)
+
+                r = (paren_start, arg_start + arg_len)
+                ranges_to_delete.append(r)
+
+    # handle varargs
+    if len(ranges_to_delete) > 1:
+        lstart, lend = ranges_to_delete[-1]
+        if lend < len(m) - 2:
+            ranges_to_delete[-1] = (lstart, len(m) - 1)
+
+    for start, end in reversed(ranges_to_delete):
+        m = m[:start] + m[end:]
     
-    if m[len(m) - 1] == ';':
+    if len(m) > 0 and m[len(m) - 1] == ';':
         m = m[:-1]
     m = m.strip()
 
@@ -114,25 +143,40 @@ if __name__ == '__main__':
         sys.exit(0)
 
     header = open(sys.argv[1], 'r').read()
-    classd = ''.join(open(os.path.join(sys.argv[2], f), 'r').read() for f in os.listdir(sys.argv[2])) if os.path.isdir(sys.argv[2]) else open(sys.argv[2], 'r').read()
-
     header_methods = find_methods(header)
-    classd_methods = find_methods(classd)
 
-    #print header_methods
-    #print classd_methods
-   
-    for k in header_methods:
-        if k in classd_methods:
-            hv = header_methods[k] 
-            cv = classd_methods[k] 
+    missing_header_methods = header_methods.copy()
+    missing_header_classes = header_methods.keys()
 
-            for m in hv:
-                if m not in cv:
-                    print '%s: %s' % (k, m)
-        else:
-            print "Missing class: %s" % k
-    
+    def parse_file(f):
+        class_methods = find_methods(f)
+        for c in missing_header_methods:
+            if c in class_methods:
+                cv = class_methods[c] 
+                hv = missing_header_methods[c] 
+                missing_header_methods[c] = [x for x in hv if x not in cv]
+                if c in missing_header_classes: missing_header_classes.remove(c)
 
+    class_root = sys.argv[2]
+    if os.path.isdir(class_root):
+        print "Searching for headers..."
+        for root, dirs, files in os.walk(class_root):
+            for fname in files:
+                with open(os.path.join(root, fname), 'r') as f:
+                    lines = [line for line in f]
+                parse_file(''.join(lines))
+    else:
+        parse_file(open(class_root, 'r').read())
+
+    # ignore missing methods for missing classes
+    for c in missing_header_classes: del missing_header_methods[c]
+    method_count = sum(len(ml) for ml in missing_header_methods.itervalues())
+
+    print "Found %d missing classes, %d missing methods" % (len(missing_header_classes), method_count)
+    for c in missing_header_classes:
+        print "Missing class: %s" % c
+    for c in missing_header_methods:
+        for m in missing_header_methods[c]:
+            print "%s: %s" % (c, m)
 
 
