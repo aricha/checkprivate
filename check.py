@@ -173,10 +173,10 @@ if __name__ == '__main__':
     method_count = sum(len(ml) for ml in missing_header_methods.itervalues())
 
     print "Found %d missing classes, %d missing methods" % (len(missing_header_classes), method_count)
-    for c in missing_header_classes:
+    for c in sorted(missing_header_classes, key=str.lower):
         print "Missing class: %s" % c
-    for c in missing_header_methods:
-        for m in missing_header_methods[c]:
+    for c in sorted(missing_header_methods, key=str.lower):
+        for m in sorted(missing_header_methods[c], key=str.lower):
             print "%s: %s" % (c, m)
 
 
